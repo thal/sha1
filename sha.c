@@ -2,13 +2,66 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+uint32_t H[5] =
+{
+    0x67452301,
+    0xEFCDAB89,
+    0x98BADCFE,
+    0x10325476,
+    0xC3D2E1F0
+};
+
+uint32_t rotl( uint32_t x, int shift )
+{
+    return (x << shift) | (x >> (sizeof(x)*8 - shift));
+}
+
+uint32_t roundFunc( uint32_t b, uint32_t c, uint32_t d, int roundNum )
+{
+    if( roundNum <= 19 )
+    {
+        return (b & c) | ((~b) & d);
+    }
+    else if( roundNum <= 39 )
+    {
+        return ( b ^ c ^ d );
+    }
+    else if( roundNum <= 59 )
+    {
+        return (b & c) | (b & d) | (c & d);
+    }
+    else
+    {
+        return ( b ^ c ^ d );
+    }
+}
+
+uint32_t kForRound( int roundNum )
+{
+    if( roundNum <= 19 )
+    {
+        return 0x5a827999;
+    }
+    else if( roundNum <= 39 )
+    {
+        return 0x6ed9eba1;
+    }
+    else if( roundNum <= 59 )
+    {
+        return 0x8f1bbcdc;
+    }
+    else
+    {
+        return 0xca62c1d6;
+    }
+}
+
 void pad(uint8_t * block, int blockSize, int fileSize)
 {
     //Padding for a 1-block case
     int d = (447 - (fileSize*8)) % 512;
     //l is block size in bits
     uint64_t l = (uint64_t)fileSize * 8;
-    printf("%d\n", l);
     block[blockSize] = 0x80;
     int i;
     for( i = 0; i < 8; i++ )
@@ -20,7 +73,53 @@ void pad(uint8_t * block, int blockSize, int fileSize)
 void doSha1(uint8_t * block)
 {
     printf("Doing SHA1 on %s\n", block);
+    static uint32_t w[80] = {0x00000000};
+    int i;
+    for( i = 0; i < 16; i++ )
+    {
+        int offset = (i*4);
+        w[i] =  block[offset]     << 24 |
+                block[offset + 1] << 16 |
+                block[offset + 2] << 8  |
+                block[offset + 3];
+    }
+
+    for( i = 16; i < 80; i++ )
+    {
+        uint32_t tmp = (w[i-3] ^ w[i-8] ^ w[i-14] ^ w[i-16]);
+        w[i] = rotl( tmp, 1 );
+    }
+
+    uint32_t a = H[0];
+    uint32_t b = H[1];
+    uint32_t c = H[2];
+    uint32_t d = H[3];
+    uint32_t e = H[4];
+
+    for( i = 0; i < 80; i++ )
+    {
+        uint32_t tmp = rotl(a, 5) + roundFunc(b,c,d,i) + e + w[i] + kForRound(i);
+        e = d;
+        d = c;
+        c = rotl(b, 30);
+        b = a;
+        a = tmp;
+        printf("%d: %x, %x, %x, %x, %x\n", i, a, b, c,d,e);
+    }
+
+    H[0] = H[0] + a;
+    H[1] = H[1] + b;
+    H[2] = H[2] + c;
+    H[3] = H[3] + d;
+    H[4] = H[4] + e;
+
+    for( i = 0; i < 5; i++)
+    {
+        printf("%x",H[i]);
+    }
+    printf("\n");
 }
+
 
 int main( int argc, char **argv )
 {
