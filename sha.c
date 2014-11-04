@@ -56,23 +56,39 @@ uint32_t kForRound( int roundNum )
     }
 }
 
-void pad(uint8_t * block, int blockSize, int fileSize)
+int pad(uint8_t * block, uint8_t * extraBlock, int blockSize, int fileSize)
 {
-    //Padding for a 1-block case
-    int d = (447 - (fileSize*8)) % 512;
+    int twoBlocks = 0;
     //l is block size in bits
     uint64_t l = (uint64_t)fileSize * 8;
-    block[blockSize] = 0x80;
-    int i;
-    for( i = 0; i < 8; i++ )
+    if(blockSize <= 55)
     {
-        block[56+i] = (l >> (56-(8*i)));
+        block[blockSize] = 0x80;
+        int i;
+        for( i = 0; i < 8; i++ )
+        {
+            block[56+i] = (l >> (56-(8*i)));
+        }
     }
+    else
+    {
+        twoBlocks = 1;
+        if(blockSize < 63)
+            block[blockSize] = 0x80;
+        else
+            extraBlock[0] = 0x80;
+
+        int i;
+        for( i = 0; i < 8; i++ )
+        {
+            extraBlock[56+i] = (l >> (56-(8*i)));
+        }
+    }
+    return twoBlocks;
 }
 
 void doSha1(uint8_t * block)
 {
-    printf("Doing SHA1 on %s\n", block);
     static uint32_t w[80] = {0x00000000};
     int i;
     for( i = 0; i < 16; i++ )
@@ -104,7 +120,7 @@ void doSha1(uint8_t * block)
         c = rotl(b, 30);
         b = a;
         a = tmp;
-        printf("%d: %x, %x, %x, %x, %x\n", i, a, b, c,d,e);
+//        printf("%d: %x, %x, %x, %x, %x\n", i, a, b, c,d,e);
     }
 
     H[0] = H[0] + a;
@@ -112,12 +128,6 @@ void doSha1(uint8_t * block)
     H[2] = H[2] + c;
     H[3] = H[3] + d;
     H[4] = H[4] + e;
-
-    for( i = 0; i < 5; i++)
-    {
-        printf("%x",H[i]);
-    }
-    printf("\n");
 }
 
 
@@ -141,12 +151,25 @@ int main( int argc, char **argv )
                 fileSize += readSize;
             }
             //We need padding
+            uint8_t *extraBlock = malloc(64);
             int i;
             for(i = readSize; i < 64; i++)
             {
                 block[i] = 0x00;
+                extraBlock[i] = 0x00;
             }
-            pad(block, readSize, fileSize);
+            int twoBlocks = pad(block, extraBlock, readSize, fileSize);
+            doSha1(block);
+            if(twoBlocks == 1)
+            {
+                doSha1(extraBlock);
+            }
+
+            for( i = 0; i < 5; i++)
+            {
+                printf("%08x",H[i]);
+            }
+            printf("\n");
         }
         else
         {
